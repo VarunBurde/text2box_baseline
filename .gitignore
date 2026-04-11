@@ -1,0 +1,13 @@
+# Generated run artifacts
+outputs/
+
+# Python cache artifacts
+__pycache__/
+*.py[cod]
+
+# Local environment
+.env
+.venv/
+
+# macOS metadata
+.DS_Store
