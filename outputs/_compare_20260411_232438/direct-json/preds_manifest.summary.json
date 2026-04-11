@@ -1,0 +1,18 @@
+{
+  "queries_processed": 5,
+  "queries_skipped": 0,
+  "detections_parsed": 4,
+  "detections_written": 4,
+  "pnp_success": 3,
+  "pnp_enabled": true,
+  "prompt_profile": "direct-json",
+  "images_completed": 1,
+  "debug_images_written": 1,
+  "manifest_records_written": 5,
+  "inference_time_s": 17.103516374998435,
+  "model_call_time_s": 16.67354012400756,
+  "avg_model_call_time_s": 3.334708024801512,
+  "output_parquet": "outputs/_compare_20260411_232438/direct-json/preds.parquet",
+  "manifest_jsonl": "outputs/_compare_20260411_232438/direct-json/preds_manifest.jsonl",
+  "debug_dir": "outputs/_compare_20260411_232438/direct-json/debug"
+}

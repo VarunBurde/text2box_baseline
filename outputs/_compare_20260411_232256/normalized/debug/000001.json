@@ -1,0 +1,531 @@
+{
+  "schema_version": "debug-columns-v1",
+  "source": "inference",
+  "image_id": 1,
+  "model_name": "gemma4:latest",
+  "image_width": 640,
+  "image_height": 480,
+  "overview_title": "RGB with GT and predicted boxes",
+  "overview_rows": [
+    {
+      "label": "queries",
+      "value": "5"
+    },
+    {
+      "label": "columns",
+      "value": "6"
+    },
+    {
+      "label": "total detections",
+      "value": "5"
+    },
+    {
+      "label": "avg parsed/query",
+      "value": "1.00"
+    },
+    {
+      "label": "avg confidence",
+      "value": "0.910"
+    },
+    {
+      "label": "pose success",
+      "value": "20.0%"
+    },
+    {
+      "label": "avg reproj err",
+      "value": "2.64"
+    }
+  ],
+  "instances": [
+    {
+      "title": "Detection 1",
+      "query": "the 002 master chef can",
+      "rows": [
+        {
+          "label": "query_id",
+          "value": "0"
+        },
+        {
+          "label": "status",
+          "value": "ok"
+        },
+        {
+          "label": "parsed detections",
+          "value": "1"
+        },
+        {
+          "label": "parse warning",
+          "value": "none"
+        },
+        {
+          "label": "object",
+          "value": "002_master_chef_can"
+        },
+        {
+          "label": "obj_id",
+          "value": "1"
+        },
+        {
+          "label": "confidence",
+          "value": "0.900"
+        },
+        {
+          "label": "det status",
+          "value": "ok"
+        },
+        {
+          "label": "pose",
+          "value": "failed"
+        },
+        {
+          "label": "reproj err",
+          "value": "n/a"
+        },
+        {
+          "label": "pose warning",
+          "value": "solvePnP failed for all corner permutations."
+        }
+      ],
+      "query_id": 0,
+      "gt_bbox_xyxy": [
+        206.0,
+        126.0,
+        338.0,
+        320.0
+      ],
+      "pred_bbox_xyxy": [
+        174.08,
+        138.23999999999998,
+        333.44,
+        320.16
+      ],
+      "bbox_3d_corners_norm_1000": [
+        [
+          288.0,
+          272.0
+        ],
+        [
+          288.0,
+          521.0
+        ],
+        [
+          667.0,
+          521.0
+        ],
+        [
+          667.0,
+          272.0
+        ],
+        [
+          288.0,
+          272.0
+        ],
+        [
+          288.0,
+          521.0
+        ],
+        [
+          667.0,
+          521.0
+        ],
+        [
+          667.0,
+          272.0
+        ]
+      ],
+      "metrics": null
+    },
+    {
+      "title": "Detection 2",
+      "query": "the 007 tuna fish can",
+      "rows": [
+        {
+          "label": "query_id",
+          "value": "1"
+        },
+        {
+          "label": "status",
+          "value": "ok"
+        },
+        {
+          "label": "parsed detections",
+          "value": "1"
+        },
+        {
+          "label": "parse warning",
+          "value": "none"
+        },
+        {
+          "label": "object",
+          "value": "007_tuna_fish_can"
+        },
+        {
+          "label": "obj_id",
+          "value": "6"
+        },
+        {
+          "label": "confidence",
+          "value": "0.900"
+        },
+        {
+          "label": "det status",
+          "value": "ok"
+        },
+        {
+          "label": "pose",
+          "value": "ok"
+        },
+        {
+          "label": "reproj err",
+          "value": "2.64"
+        },
+        {
+          "label": "pose warning",
+          "value": "none"
+        }
+      ],
+      "query_id": 1,
+      "gt_bbox_xyxy": [
+        282.0,
+        280.0,
+        394.0,
+        353.0
+      ],
+      "pred_bbox_xyxy": [
+        284.16,
+        273.12,
+        394.88,
+        357.12
+      ],
+      "bbox_3d_corners_norm_1000": [
+        [
+          568.0,
+          441.0
+        ],
+        [
+          568.0,
+          564.0
+        ],
+        [
+          667.0,
+          564.0
+        ],
+        [
+          667.0,
+          441.0
+        ],
+        [
+          568.0,
+          441.0
+        ],
+        [
+          568.0,
+          564.0
+        ],
+        [
+          667.0,
+          564.0
+        ],
+        [
+          667.0,
+          441.0
+        ]
+      ],
+      "metrics": null
+    },
+    {
+      "title": "Detection 3",
+      "query": "the 025 mug",
+      "rows": [
+        {
+          "label": "query_id",
+          "value": "2"
+        },
+        {
+          "label": "status",
+          "value": "ok"
+        },
+        {
+          "label": "parsed detections",
+          "value": "1"
+        },
+        {
+          "label": "parse warning",
+          "value": "none"
+        },
+        {
+          "label": "object",
+          "value": "025_mug"
+        },
+        {
+          "label": "obj_id",
+          "value": "14"
+        },
+        {
+          "label": "confidence",
+          "value": "0.900"
+        },
+        {
+          "label": "det status",
+          "value": "ok"
+        },
+        {
+          "label": "pose",
+          "value": "failed"
+        },
+        {
+          "label": "reproj err",
+          "value": "n/a"
+        },
+        {
+          "label": "pose warning",
+          "value": "solvePnP failed for all corner permutations."
+        }
+      ],
+      "query_id": 2,
+      "gt_bbox_xyxy": [
+        209.0,
+        45.0,
+        346.0,
+        158.0
+      ],
+      "pred_bbox_xyxy": [
+        186.88,
+        70.56,
+        336.64,
+        159.84
+      ],
+      "bbox_3d_corners_norm_1000": [
+        [
+          147.0,
+          292.0
+        ],
+        [
+          147.0,
+          526.0
+        ],
+        [
+          333.0,
+          526.0
+        ],
+        [
+          333.0,
+          292.0
+        ],
+        [
+          147.0,
+          292.0
+        ],
+        [
+          147.0,
+          526.0
+        ],
+        [
+          333.0,
+          526.0
+        ],
+        [
+          333.0,
+          292.0
+        ]
+      ],
+      "metrics": null
+    },
+    {
+      "title": "Detection 4",
+      "query": "the 051 large clamp",
+      "rows": [
+        {
+          "label": "query_id",
+          "value": "3"
+        },
+        {
+          "label": "status",
+          "value": "ok"
+        },
+        {
+          "label": "parsed detections",
+          "value": "1"
+        },
+        {
+          "label": "parse warning",
+          "value": "none"
+        },
+        {
+          "label": "object",
+          "value": "051_large_clamp"
+        },
+        {
+          "label": "obj_id",
+          "value": "19"
+        },
+        {
+          "label": "confidence",
+          "value": "0.900"
+        },
+        {
+          "label": "det status",
+          "value": "ok"
+        },
+        {
+          "label": "pose",
+          "value": "failed"
+        },
+        {
+          "label": "reproj err",
+          "value": "n/a"
+        },
+        {
+          "label": "pose warning",
+          "value": "solvePnP failed for all corner permutations."
+        }
+      ],
+      "query_id": 3,
+      "gt_bbox_xyxy": [
+        329.0,
+        116.0,
+        419.0,
+        329.0
+      ],
+      "pred_bbox_xyxy": [
+        96.0,
+        320.16,
+        423.68,
+        455.03999999999996
+      ],
+      "bbox_3d_corners_norm_1000": [
+        [
+          667.0,
+          150.0
+        ],
+        [
+          667.0,
+          662.0
+        ],
+        [
+          740.0,
+          662.0
+        ],
+        [
+          740.0,
+          150.0
+        ],
+        [
+          667.0,
+          150.0
+        ],
+        [
+          667.0,
+          662.0
+        ],
+        [
+          740.0,
+          662.0
+        ],
+        [
+          740.0,
+          150.0
+        ]
+      ],
+      "metrics": null
+    },
+    {
+      "title": "Detection 5",
+      "query": "the 052 extra large clamp",
+      "rows": [
+        {
+          "label": "query_id",
+          "value": "4"
+        },
+        {
+          "label": "status",
+          "value": "ok"
+        },
+        {
+          "label": "parsed detections",
+          "value": "1"
+        },
+        {
+          "label": "parse warning",
+          "value": "none"
+        },
+        {
+          "label": "object",
+          "value": "052_extra_large_clamp"
+        },
+        {
+          "label": "obj_id",
+          "value": "20"
+        },
+        {
+          "label": "confidence",
+          "value": "0.950"
+        },
+        {
+          "label": "det status",
+          "value": "ok"
+        },
+        {
+          "label": "pose",
+          "value": "failed"
+        },
+        {
+          "label": "reproj err",
+          "value": "n/a"
+        },
+        {
+          "label": "pose warning",
+          "value": "solvePnP failed for all corner permutations."
+        }
+      ],
+      "query_id": 4,
+      "gt_bbox_xyxy": [
+        92.0,
+        332.0,
+        441.0,
+        459.0
+      ],
+      "pred_bbox_xyxy": [
+        91.52,
+        324.0,
+        423.68,
+        454.56
+      ],
+      "bbox_3d_corners_norm_1000": [
+        [
+          675.0,
+          143.0
+        ],
+        [
+          675.0,
+          662.0
+        ],
+        [
+          947.0,
+          662.0
+        ],
+        [
+          947.0,
+          143.0
+        ],
+        [
+          700.0,
+          143.0
+        ],
+        [
+          700.0,
+          662.0
+        ],
+        [
+          875.0,
+          662.0
+        ],
+        [
+          875.0,
+          143.0
+        ]
+      ],
+      "metrics": null
+    }
+  ]
+}
