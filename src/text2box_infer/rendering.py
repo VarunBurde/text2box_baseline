@@ -80,6 +80,40 @@ def format_percent(value: Any, precision: int = 1) -> str:
         return str(value)
 
 
+def _iou_2d(gt: list[float], pred: list[float]) -> float | None:
+    """2D IoU between two xyxy boxes."""
+    ix0 = max(gt[0], pred[0])
+    iy0 = max(gt[1], pred[1])
+    ix1 = min(gt[2], pred[2])
+    iy1 = min(gt[3], pred[3])
+    inter = max(0.0, ix1 - ix0) * max(0.0, iy1 - iy0)
+    if inter == 0.0:
+        return 0.0
+    gt_area = max(0.0, gt[2] - gt[0]) * max(0.0, gt[3] - gt[1])
+    pred_area = max(0.0, pred[2] - pred[0]) * max(0.0, pred[3] - pred[1])
+    union = gt_area + pred_area - inter
+    return inter / union if union > 0 else None
+
+
+def _draw_badge(
+    draw: ImageDraw.ImageDraw,
+    x: int,
+    y: int,
+    text: str,
+    fg: tuple[int, int, int] = (255, 255, 255),
+    bg: tuple[int, int, int] = (30, 30, 30),
+    font: ImageFont.ImageFont | None = None,
+) -> int:
+    """Draw a pill badge and return x position after the badge."""
+    if font is None:
+        font = load_font(11)
+    tw = int(draw.textlength(text, font=font)) + 8
+    th = 15
+    draw.rounded_rectangle((x, y, x + tw, y + th), radius=3, fill=bg)
+    draw.text((x + 4, y + 1), text, fill=fg, font=font)
+    return x + tw
+
+
 def denorm_bbox_yxyx_to_xyxy(norm_bbox: list[float], width: int, height: int) -> list[float]:
     ymin, xmin, ymax, xmax = norm_bbox
     return [
@@ -456,6 +490,7 @@ def render_columns_report(image: Image.Image, payload: dict[str, Any]) -> Image.
     body_font = load_font(15)
     small_font = load_font(13)
     metric_font = load_font(12)
+    badge_font = load_font(11)
 
     # Estimate heights for each card to size a common row.
     summary_h = 38 + SUMMARY_2D_IMG_H + 8 + SUMMARY_3D_IMG_H + 8 + max(1, len(overview_rows)) * ROW_H + 12
@@ -509,11 +544,39 @@ def render_columns_report(image: Image.Image, payload: dict[str, Any]) -> Image.
 
     all_2d_overlay = image.copy()
     all_3d_overlay = image.copy()
+
+    # Accumulate per-image stats for summary badges.
+    summary_n_detected = 0
+    summary_ious: list[float] = []
+    summary_reprojections: list[float] = []
+    summary_pose_ok = 0
+    summary_pose_total = 0
+
     for idx, inst in enumerate(instances):
         gt_bbox = float_list(inst.get("gt_bbox_xyxy"), expected_len=4)
         pred_bbox = float_list(inst.get("pred_bbox_xyxy"), expected_len=4)
         pred_corners = corner_list(inst.get("pred_bbox_3d_corners_norm_1000"))
         gt_corners = corner_list(inst.get("gt_bbox_3d_corners_norm_1000"))
+
+        if pred_bbox is not None:
+            summary_n_detected += 1
+        if gt_bbox is not None and pred_bbox is not None:
+            iou = _iou_2d(gt_bbox, pred_bbox)
+            if iou is not None:
+                summary_ious.append(iou)
+
+        inst_row_dict = {lbl: val for lbl, val in _row_pairs(inst.get("rows"))}
+        pose_s = inst_row_dict.get("pose")
+        reproj_s = inst_row_dict.get("reproj err")
+        if pose_s in ("ok", "failed"):
+            summary_pose_total += 1
+            if pose_s == "ok":
+                summary_pose_ok += 1
+        if reproj_s and reproj_s != "n/a":
+            try:
+                summary_reprojections.append(float(reproj_s))
+            except ValueError:
+                pass
 
         all_2d_overlay = draw_2d_overlay(
             image=all_2d_overlay,
@@ -527,8 +590,33 @@ def render_columns_report(image: Image.Image, payload: dict[str, Any]) -> Image.
             pred_corners_norm=pred_corners,
         )
 
+    summary_avg_iou = sum(summary_ious) / len(summary_ious) if summary_ious else None
+    summary_avg_reproj = sum(summary_reprojections) / len(summary_reprojections) if summary_reprojections else None
+
     summary_2d_img = fit_to_box(all_2d_overlay, SUMMARY_COL_W - 2 * IMG_PAD, SUMMARY_2D_IMG_H)
+    # Badges on summary 2D thumbnail.
+    s2_draw = ImageDraw.Draw(summary_2d_img)
+    bx, by = 4, 4
+    bx = _draw_badge(s2_draw, bx, by, f"det {summary_n_detected}/{len(instances)}", fg=(255, 255, 255), bg=(30, 30, 30), font=badge_font) + 4
+    if summary_avg_iou is not None:
+        iou_bg = (34, 197, 94) if summary_avg_iou >= 0.5 else (251, 146, 60) if summary_avg_iou >= 0.25 else (239, 68, 68)
+        _draw_badge(s2_draw, bx, by, f"avg IoU {summary_avg_iou:.2f}", fg=(255, 255, 255), bg=iou_bg, font=badge_font)
+
     summary_3d_img = fit_to_box(all_3d_overlay, SUMMARY_COL_W - 2 * IMG_PAD, SUMMARY_3D_IMG_H)
+    # Badges on summary 3D thumbnail.
+    s3_draw = ImageDraw.Draw(summary_3d_img)
+    bx, by = 4, 4
+    if summary_pose_total > 0:
+        if summary_pose_ok == summary_pose_total:
+            pose_bg: tuple[int, int, int] = (34, 197, 94)
+        elif summary_pose_ok == 0:
+            pose_bg = (239, 68, 68)
+        else:
+            pose_bg = (251, 146, 60)
+        bx = _draw_badge(s3_draw, bx, by, f"pose {summary_pose_ok}/{summary_pose_total}", fg=(255, 255, 255), bg=pose_bg, font=badge_font) + 4
+    if summary_avg_reproj is not None:
+        reproj_bg = (34, 197, 94) if summary_avg_reproj < 10 else (251, 146, 60) if summary_avg_reproj < 30 else (239, 68, 68)
+        _draw_badge(s3_draw, bx, by, f"avg reproj {summary_avg_reproj:.1f}px", fg=(255, 255, 255), bg=reproj_bg, font=badge_font)
 
     summary_2d_y = top_y + 30
     summary_3d_y = summary_2d_y + SUMMARY_2D_IMG_H + 8
@@ -560,6 +648,12 @@ def render_columns_report(image: Image.Image, payload: dict[str, Any]) -> Image.
         pred_corners = corner_list(inst.get("pred_bbox_3d_corners_norm_1000"))
         gt_corners = corner_list(inst.get("gt_bbox_3d_corners_norm_1000"))
 
+        # Extract per-instance metrics from rows for badge overlays.
+        inst_row_dict = {lbl: val for lbl, val in _row_pairs(inst.get("rows"))}
+        inst_pose_s = inst_row_dict.get("pose")
+        inst_reproj_s = inst_row_dict.get("reproj err")
+        inst_conf_s = inst_row_dict.get("confidence")
+
         # Top row: 2D bboxes only (no cuboids).
         det_2d_img = draw_2d_overlay(
             image=image,
@@ -568,6 +662,22 @@ def render_columns_report(image: Image.Image, payload: dict[str, Any]) -> Image.
             label=f"D{idx + 1}",
         )
         det_img = fit_to_box(det_2d_img, DET_COL_W - 2 * IMG_PAD, DET_IMG_H)
+        # IoU and confidence badges on 2D thumbnail.
+        # Prefer pre-computed iou2d from metrics dict; fall back to inline computation.
+        inst_metrics = inst.get("metrics") if isinstance(inst.get("metrics"), dict) else {}
+        det_draw = ImageDraw.Draw(det_img)
+        bx_d, by_d = 4, det_img.height - 18
+        iou_val = inst_metrics.get("iou2d") if inst_metrics else None
+        if iou_val is None and gt_bbox is not None and pred_bbox is not None:
+            iou_val = _iou_2d(gt_bbox, pred_bbox)
+        if iou_val is not None:
+            iou_bg = (34, 197, 94) if iou_val >= 0.5 else (251, 146, 60) if iou_val >= 0.25 else (239, 68, 68)
+            bx_d = _draw_badge(det_draw, bx_d, by_d, f"IoU {iou_val:.2f}", fg=(255, 255, 255), bg=iou_bg, font=badge_font) + 4
+        if inst_conf_s and inst_conf_s != "n/a":
+            try:
+                _draw_badge(det_draw, bx_d, by_d, f"conf {float(inst_conf_s):.2f}", fg=(255, 255, 255), bg=ACCENT, font=badge_font)
+            except ValueError:
+                pass
         canvas.paste(det_img, (x + IMG_PAD, top_y + 30))
 
         three_d_y = top_y + 30 + DET_IMG_H + 8
@@ -583,7 +693,20 @@ def render_columns_report(image: Image.Image, payload: dict[str, Any]) -> Image.
             pred_corners_norm=pred_corners,
         )
 
-        canvas.paste(fit_to_box(combined_3d, mini_w, mini_h), (x + IMG_PAD, mini_y))
+        mini_img = fit_to_box(combined_3d, mini_w, mini_h)
+        # Reproj / pose badge on 3D thumbnail.
+        mini_draw = ImageDraw.Draw(mini_img)
+        bx_m, by_m = 4, mini_img.height - 18
+        if inst_pose_s == "ok" and inst_reproj_s and inst_reproj_s != "n/a":
+            try:
+                reproj_f = float(inst_reproj_s)
+                reproj_bg = (34, 197, 94) if reproj_f < 10 else (251, 146, 60) if reproj_f < 30 else (239, 68, 68)
+                _draw_badge(mini_draw, bx_m, by_m, f"reproj {reproj_f:.1f}px", fg=(255, 255, 255), bg=reproj_bg, font=badge_font)
+            except ValueError:
+                pass
+        elif inst_pose_s == "failed":
+            _draw_badge(mini_draw, bx_m, by_m, "pose failed", fg=(255, 255, 255), bg=(239, 68, 68), font=badge_font)
+        canvas.paste(mini_img, (x + IMG_PAD, mini_y))
 
         text_y = three_d_y + DET_3D_ROW_H + 8
         draw.text((x + IMG_PAD, text_y + 2), "Query:", fill=MUTED, font=small_font)

@@ -70,6 +70,27 @@ def _build_gt_lookup(
     return lookup
 
 
+def _gt_corners_cam_xyz_mm(gt: dict[str, Any]) -> list[list[float]] | None:
+    """Return GT 3D bbox corners in camera frame (mm), without projection."""
+    try:
+        r_bbox = np.array(gt["bbox_3d_R"], dtype=np.float64).reshape(3, 3)
+        t_bbox = np.array(gt["bbox_3d_t"], dtype=np.float64).reshape(3)
+        size = np.array(gt["bbox_3d_size"], dtype=np.float64).reshape(3)
+    except Exception:  # noqa: BLE001
+        return None
+
+    # Corners 0-3: front face (z = +half[2]), corners 4-7: back face.
+    # Matches draw_cuboid_layered edge connectivity.
+    half = size / 2.0
+    signs = [
+        [-1, -1, +1], [+1, -1, +1], [+1, +1, +1], [-1, +1, +1],
+        [-1, -1, -1], [+1, -1, -1], [+1, +1, -1], [-1, +1, -1],
+    ]
+    corners_model = np.array([[s[0] * half[0], s[1] * half[1], s[2] * half[2]] for s in signs], dtype=np.float64)
+    corners_cam = (r_bbox @ corners_model.T).T + t_bbox.reshape(1, 3)
+    return corners_cam.tolist()
+
+
 def _gt_corners_norm_1000(
     gt: dict[str, Any],
     intrinsics: list[float],
@@ -79,26 +100,11 @@ def _gt_corners_norm_1000(
     """Project GT 3D bbox corners to normalized [0,1000] image coords."""
     if len(intrinsics) != 4 or image_width <= 0 or image_height <= 0:
         return None
-    try:
-        r_bbox = np.array(gt["bbox_3d_R"], dtype=np.float64).reshape(3, 3)
-        t_bbox = np.array(gt["bbox_3d_t"], dtype=np.float64).reshape(3)
-        size = np.array(gt["bbox_3d_size"], dtype=np.float64).reshape(3)
-    except Exception:  # noqa: BLE001
+    corners_cam = _gt_corners_cam_xyz_mm(gt)
+    if corners_cam is None:
         return None
-
-    # Canonical box corners (8 × 3) in bbox frame.
-    # Corners 0-3: front face (z = +half[2]), corners 4-7: back face (z = -half[2]).
-    # This matches the edge connectivity expected by draw_cuboid_layered.
-    half = size / 2.0
-    signs = [
-        [-1, -1, +1], [+1, -1, +1], [+1, +1, +1], [-1, +1, +1],
-        [-1, -1, -1], [+1, -1, -1], [+1, +1, -1], [-1, +1, -1],
-    ]
-    corners_model = np.array([[s[0] * half[0], s[1] * half[1], s[2] * half[2]] for s in signs], dtype=np.float64)
-    corners_cam = (r_bbox @ corners_model.T).T + t_bbox.reshape(1, 3)
-
     return _project_cam_xyz_to_norm_1000(
-        corners_cam_xyz_mm=corners_cam.tolist(),
+        corners_cam_xyz_mm=corners_cam,
         intrinsics=intrinsics,
         image_width=image_width,
         image_height=image_height,
@@ -393,13 +399,21 @@ def run_inference(
 
             gt_entry = gt_lookup.get(query_id)
             if gt_entry is not None:
-                gt_corners = _gt_corners_norm_1000(
+                _intrinsics = [float(v) for v in image_meta["intrinsics"]]
+                _w = int(image_meta["width"])
+                _h = int(image_meta["height"])
+                gt_corners_cam = _gt_corners_cam_xyz_mm(gt_entry)
+                gt_corners_norm = _gt_corners_norm_1000(
                     gt=gt_entry,
-                    intrinsics=[float(v) for v in image_meta["intrinsics"]],
-                    image_width=int(image_meta["width"]),
-                    image_height=int(image_meta["height"]),
+                    intrinsics=_intrinsics,
+                    image_width=_w,
+                    image_height=_h,
                 )
-                gt_entry = {**gt_entry, "bbox_3d_corners_norm_1000": gt_corners}
+                gt_entry = {
+                    **gt_entry,
+                    "bbox_3d_corners_cam_xyz_mm": gt_corners_cam,
+                    "bbox_3d_corners_norm_1000": gt_corners_norm,
+                }
 
             query_manifest: dict[str, Any] = {
                 "query_id": query_id,
