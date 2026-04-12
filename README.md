@@ -14,6 +14,8 @@ The pipeline does the following:
 - Computes protocol metrics (AP2D, AP3D, AR2D, AR3D, ACD3D).
 - Optionally generates per-image debug reports and detailed JSON files when `--debug` is enabled.
 
+Metric definitions and interpretation guide: see `metrics.md`.
+
 ## Installation
 
 ```bash
@@ -88,11 +90,122 @@ PYTHONPATH=src .venv/bin/python -m text2box_infer.cli \
 
 ### Prompt profiles
 
-Choose one of the three prompt styles with `--prompt-profile`:
+Choose one of the two prompt styles with `--prompt-profile`:
 
 - `direct-json`: asks the model to directly output final coordinates in the JSON schema.
-- `normalized`: normalized-coordinate prompt without extra PnP-oriented geometry constraints.
-- `normalized-pnp`: normalized prompt with stricter geometry constraints for downstream PnP (default).
+- `simple`: canonical unified prompt profile.
+
+Current default profile: `simple`.
+
+Backward-compatible aliases: `normalized-pnp` and `direct-json` both map to the same unified prompt.
+
+### Low-level math: how 3D is computed per profile
+
+This section explains exactly where 3D coordinates come from in each profile.
+
+#### 1) `direct-json`
+
+- The model directly returns camera-frame 3D corners in millimeters as `bbox_3d_corners_cam_xyz_mm`.
+- No PnP is needed to recover 3D corners.
+- If needed, these camera-frame corners can be projected to normalized 2D using intrinsics.
+
+Projection used in code for camera-frame XYZ to normalized 2D:
+
+$$
+x_{px} = f_x \cdot \frac{X}{Z} + c_x,\quad
+y_{px} = f_y \cdot \frac{Y}{Z} + c_y
+$$
+
+$$
+x_{norm} = 1000 \cdot \frac{x_{px}}{W},\quad
+y_{norm} = 1000 \cdot \frac{y_{px}}{H}
+$$
+
+#### 2) `simple` (challenge-compliant)
+
+- The model returns:
+  - `bbox_2d_norm_1000`
+  - `bbox_3d_corners_norm_1000` (8 projected corners)
+  - `bbox_3d_size_mm` = `[length_mm, width_mm, height_mm]`
+- These corners are 2D image points; metric 3D pose is recovered with PnP.
+- In inference, this path uses only:
+  - image,
+  - query,
+  - camera intrinsics,
+  - model-predicted `bbox_3d_size_mm`.
+- Dataset object metadata is not used in inference.
+
+Denormalization to pixels:
+
+$$
+u_i = \frac{x_i^{norm}}{1000} W,\quad
+v_i = \frac{y_i^{norm}}{1000} H
+$$
+
+Camera model:
+
+$$
+K =
+\begin{bmatrix}
+f_x & 0 & c_x \\
+0 & f_y & c_y \\
+0 & 0 & 1
+\end{bmatrix}
+$$
+
+Build centered 3D cuboid corners from predicted size:
+
+$$
+X_i^{box} \in \left\{\left(\pm\frac{l}{2}, \pm\frac{w}{2}, \pm\frac{h}{2}\right)\right\}
+$$
+
+PnP solves for rotation $R$ and translation $t$:
+
+$$
+s_i
+\begin{bmatrix}
+u_i \\
+v_i \\
+1
+\end{bmatrix}
+=
+K [R\ |\ t]
+\begin{bmatrix}
+X_i \\
+Y_i \\
+Z_i \\
+1
+\end{bmatrix}
+$$
+
+Equivalent optimization objective:
+
+$$
+\min_{R,t} \sum_{i=1}^{8} \left\|p_i - \pi\left(K(RX_i + t)\right)\right\|_2^2
+$$
+
+Then metric camera-frame corners are obtained by:
+
+$$
+X_i^{cam} = R X_i^{box} + t
+$$
+
+#### Reprojection error and acceptance
+
+The solver tries multiple corner permutations, keeps the best one by mean reprojection error, and rejects poor fits above a threshold.
+
+$$
+e = \frac{1}{8} \sum_{i=1}^{8} \|\hat{p}_i - p_i\|_2
+$$
+
+Lower error means the recovered 3D pose projects back closer to predicted 2D corners.
+
+#### Metadata policy
+
+- Inference uses only image/query/intrinsics and model outputs.
+- Object metadata (`objects_info.parquet`) is reserved for evaluation.
+
+This keeps inference challenge-compliant while still allowing full metric evaluation offline.
 
 Example:
 
@@ -102,7 +215,7 @@ PYTHONPATH=src .venv/bin/python -m text2box_infer.cli \
   --split test \
   --mode baseline-2d3d \
   --provider ollama \
-  --prompt-profile normalized \
+  --prompt-profile simple \
   --debug
 ```
 
@@ -117,6 +230,32 @@ PYTHONPATH=src .venv/bin/python -m text2box_infer.cli \
   --limit-images 10 \
   --debug
 ```
+
+### One-image profile comparison (both prompt profiles)
+
+Run both prompt profiles on one image and render a side-by-side comparison panel:
+
+```bash
+PYTHONPATH=src .venv/bin/python run_one_image_all_profiles.py \
+  --data-root Datasets/ycbv \
+  --split test \
+  --provider ollama \
+  --output outputs/compare_all_profiles.png
+```
+
+Default behavior for this helper:
+
+- Runs inference once per profile (`direct-json`, `simple`).
+- Then runs post-hoc metric enrichment per profile.
+- Rewrites `debug/<image_id>.json` and `debug/<image_id>_report.png` so reports include:
+  - Per-instance metrics: `IoU2D`, `IoU3D`, `ACD3D`, `hit2D@50`, `hit3D@25`.
+  - Per-image averages: `avg IoU2D`, `avg IoU3D`, `avg ACD3D`, plus hit-rate averages.
+
+Useful flags:
+
+- `--no-metric-enrichment`: keep inference-only debug reports.
+- `--dmax 100`: `D_max` used by enrichment metrics.
+- `--continuous-symmetry-steps 36`: symmetry discretization steps for 3D metrics.
 
 ### Inference outputs (written incrementally)
 
@@ -139,6 +278,8 @@ Behavior:
 - Summary JSON contains inference timing and throughput counters.
 
 ## 2) Evaluate Metrics Only
+
+For exact metric definitions, thresholds, and interpretation, see `metrics.md`.
 
 Run protocol metrics from predictions + dataset GT:
 

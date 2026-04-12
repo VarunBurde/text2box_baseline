@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 
+import numpy as np
 import pandas as pd
 from PIL import Image
 
@@ -228,6 +229,123 @@ def _gt_bbox_from_instance(instance: dict[str, Any]) -> list[float] | None:
     return float_list(gt_raw.get("bbox_xyxy"), expected_len=4)
 
 
+def _load_bbox_object_lookup(data_root: Path) -> dict[int, dict[str, np.ndarray]]:
+    objects_info_path = data_root / "objects_info.parquet"
+    if not objects_info_path.exists():
+        return {}
+
+    df = pd.read_parquet(
+        objects_info_path,
+        columns=["obj_id", "bbox_3d_model_R", "bbox_3d_model_t", "bbox_3d_model_size"],
+    )
+    lookup: dict[int, dict[str, np.ndarray]] = {}
+    for row in df.itertuples(index=False):
+        try:
+            obj_id = int(row.obj_id)
+            lookup[obj_id] = {
+                "bbox_3d_model_R": np.array(row.bbox_3d_model_R, dtype=np.float64).reshape(3, 3),
+                "bbox_3d_model_t": np.array(row.bbox_3d_model_t, dtype=np.float64).reshape(3),
+                "bbox_3d_model_size": np.array(row.bbox_3d_model_size, dtype=np.float64).reshape(3),
+            }
+        except Exception:
+            continue
+    return lookup
+
+
+def _canonical_box_corners(size_xyz: np.ndarray) -> np.ndarray:
+    sx, sy, sz = [float(v) for v in size_xyz.reshape(3).tolist()]
+    return np.array(
+        [
+            [-sx / 2.0, -sy / 2.0, +sz / 2.0],
+            [+sx / 2.0, -sy / 2.0, +sz / 2.0],
+            [+sx / 2.0, +sy / 2.0, +sz / 2.0],
+            [-sx / 2.0, +sy / 2.0, +sz / 2.0],
+            [-sx / 2.0, -sy / 2.0, -sz / 2.0],
+            [+sx / 2.0, -sy / 2.0, -sz / 2.0],
+            [+sx / 2.0, +sy / 2.0, -sz / 2.0],
+            [-sx / 2.0, +sy / 2.0, -sz / 2.0],
+        ],
+        dtype=np.float64,
+    )
+
+
+def _project_cam_xyz_to_norm_1000(
+    corners_cam_xyz_mm: list[list[float]],
+    intrinsics: list[float],
+    image_width: int,
+    image_height: int,
+) -> list[list[float]] | None:
+    if len(intrinsics) != 4 or image_width <= 0 or image_height <= 0:
+        return None
+    if len(corners_cam_xyz_mm) != 8:
+        return None
+
+    fx, fy, cx, cy = [float(v) for v in intrinsics]
+    out: list[list[float]] = []
+
+    for corner in corners_cam_xyz_mm:
+        if not isinstance(corner, list) or len(corner) != 3:
+            return None
+        x_mm, y_mm, z_mm = [float(v) for v in corner]
+        if z_mm <= 1e-6:
+            return None
+
+        x_px = (fx * (x_mm / z_mm)) + cx
+        y_px = (fy * (y_mm / z_mm)) + cy
+        # Store unclamped coords; PIL clips edges at image boundary naturally.
+        x_norm = (x_px / float(image_width)) * 1000.0
+        y_norm = (y_px / float(image_height)) * 1000.0
+        out.append([y_norm, x_norm])
+
+    return out
+
+
+def _gt_corners_norm_from_instance(
+    instance: dict[str, Any],
+    width: int,
+    height: int,
+    object_lookup: dict[int, dict[str, np.ndarray]] | None,
+) -> list[list[float]] | None:
+    if object_lookup is None or width <= 0 or height <= 0:
+        return None
+
+    gt_raw = instance.get("gt")
+    if not isinstance(gt_raw, dict):
+        return None
+
+    intrinsics = float_list(instance.get("intrinsics"), expected_len=4)
+    if intrinsics is None:
+        return None
+
+    obj_id_raw = instance.get("obj_id")
+    try:
+        obj_id = int(obj_id_raw)
+    except (TypeError, ValueError):
+        return None
+
+    object_meta = object_lookup.get(obj_id)
+    if object_meta is None:
+        return None
+
+    try:
+        r_cam_from_model = np.array(gt_raw.get("R_cam_from_model"), dtype=np.float64).reshape(3, 3)
+        t_cam_from_model = np.array(gt_raw.get("t_cam_from_model"), dtype=np.float64).reshape(3)
+    except Exception:
+        return None
+
+    r_bbox = r_cam_from_model @ object_meta["bbox_3d_model_R"]
+    t_bbox = r_cam_from_model @ object_meta["bbox_3d_model_t"] + t_cam_from_model
+    local = _canonical_box_corners(object_meta["bbox_3d_model_size"])
+    corners_cam_xyz = (r_bbox @ local.T).T + t_bbox.reshape(1, 3)
+
+    return _project_cam_xyz_to_norm_1000(
+        corners_cam_xyz_mm=corners_cam_xyz.astype(float).tolist(),
+        intrinsics=intrinsics,
+        image_width=width,
+        image_height=height,
+    )
+
+
 def _query_metrics_lookup(protocol_metrics: dict[str, Any]) -> dict[str, dict[str, Any]]:
     query_metrics = protocol_metrics.get("query_metrics")
     if not isinstance(query_metrics, dict):
@@ -366,6 +484,7 @@ def _payload_from_manifest_group(
     instances: list[dict[str, Any]],
     model_name: str,
     query_metrics: dict[str, dict[str, Any]] | None,
+    object_lookup: dict[int, dict[str, np.ndarray]] | None,
 ) -> dict[str, Any]:
     width = int(instances[0].get("width", 0)) if instances else 0
     height = int(instances[0].get("height", 0)) if instances else 0
@@ -373,6 +492,13 @@ def _payload_from_manifest_group(
     cards: list[dict[str, Any]] = []
     for idx, instance in enumerate(instances):
         det = _pick_detection_from_instance(instance)
+        pred_corners = corner_list(det.get("bbox_3d_corners_norm_1000")) if det else None
+        gt_corners = _gt_corners_norm_from_instance(
+            instance=instance,
+            width=width,
+            height=height,
+            object_lookup=object_lookup,
+        )
         qvals: dict[str, Any] | None = None
         if query_metrics is not None:
             qvals = query_metrics.get(str(instance.get("query_id")))
@@ -389,9 +515,8 @@ def _payload_from_manifest_group(
                 "query_id": instance.get("query_id"),
                 "gt_bbox_xyxy": _gt_bbox_from_instance(instance),
                 "pred_bbox_xyxy": _pred_bbox_from_det(det, width=width, height=height),
-                "bbox_3d_corners_norm_1000": (
-                    corner_list(det.get("bbox_3d_corners_norm_1000")) if det else None
-                ),
+                "gt_bbox_3d_corners_norm_1000": gt_corners,
+                "pred_bbox_3d_corners_norm_1000": pred_corners,
                 "metrics": qvals,
             }
         )
@@ -668,6 +793,7 @@ def run_visualization(
                 include_query_metrics=True,
             )
             query_metrics = _query_metrics_lookup(protocol_metrics)
+            object_lookup = _load_bbox_object_lookup(data_root)
 
             for image_id in selected_ids:
                 instances = grouped.get(image_id, [])
@@ -686,6 +812,7 @@ def run_visualization(
                     instances=instances,
                     model_name=resolved_model,
                     query_metrics=query_metrics,
+                    object_lookup=object_lookup,
                 )
                 _write_payload_and_png(debug_dir=debug_dir, payload=payload, image=image)
                 processed += 1

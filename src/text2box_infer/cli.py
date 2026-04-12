@@ -80,11 +80,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--prompt-profile",
-        choices=[p.value for p in PromptProfile],
-        default=PromptProfile.NORMALIZED_PNP.value,
+        choices=[
+            PromptProfile.SIMPLE.value,
+            PromptProfile.DIRECT_JSON.value,
+            PromptProfile.NORMALIZED_PNP.value,
+        ],
+        default=PromptProfile.SIMPLE.value,
         help=(
-            "Prompt variant to use: direct-json, normalized, or normalized-pnp. "
-            "Default: normalized-pnp."
+            "Prompt profile to use. simple is the canonical name. direct-json and "
+            "normalized-pnp are backward-compatible aliases that map to the same prompt. "
+            "Default: simple."
         ),
     )
 

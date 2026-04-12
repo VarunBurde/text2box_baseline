@@ -43,6 +43,25 @@ def load_split_tables(data_root: str | Path, split: str):
     return objects_df, images_df, queries_df
 
 
+def load_inference_tables(data_root: str | Path, split: str):
+    data_root = Path(data_root)
+    images_path = data_root / f"images_info_{split}.parquet"
+    queries_path = data_root / f"queries_{split}.parquet"
+
+    if not images_path.exists():
+        raise FileNotFoundError(f"Missing file: {images_path}")
+    if not queries_path.exists():
+        raise FileNotFoundError(f"Missing file: {queries_path}")
+
+    images_df = pd.read_parquet(images_path)
+    queries_df = pd.read_parquet(queries_path)
+
+    _ensure_columns(images_df, REQUIRED_IMAGE_COLUMNS, images_path)
+    _ensure_columns(queries_df, REQUIRED_QUERY_COLUMNS, queries_path)
+
+    return images_df, queries_df
+
+
 def build_image_lookup(images_df: pd.DataFrame) -> dict[int, dict[str, Any]]:
     image_lookup: dict[int, dict[str, Any]] = {}
     records = images_df.to_dict(orient="records")

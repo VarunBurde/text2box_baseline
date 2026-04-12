@@ -11,9 +11,9 @@ class RunMode(str, Enum):
 
 
 class PromptProfile(str, Enum):
-    DIRECT_JSON = "direct-json"
-    NORMALIZED = "normalized"
-    NORMALIZED_PNP = "normalized-pnp"
+    SIMPLE = "simple"
+    NORMALIZED_PNP = "normalized-pnp"  # Backward-compatible alias mapped to unified prompt.
+    DIRECT_JSON = "direct-json"  # Backward-compatible alias mapped to unified prompt.
 
 
 @dataclass(slots=True)
@@ -22,9 +22,8 @@ class ModelRequest:
     width: int
     height: int
     intrinsics: list[float]
-    object_catalog: list[str]
     mode: RunMode
-    prompt_profile: PromptProfile = PromptProfile.NORMALIZED_PNP
+    prompt_profile: PromptProfile = PromptProfile.SIMPLE
 
 
 @dataclass(slots=True)
@@ -32,7 +31,9 @@ class IntermediateDetection:
     object_name: str | None
     bbox_2d_norm_1000: list[float] | None
     bbox_3d_corners_norm_1000: list[list[float]] | None
+    bbox_3d_size_mm: list[float] | None = None
     bbox_3d_corners_cam_xyz_mm: list[list[float]] | None = None
+    box_3d_cam_xyz_size_rpy_mm_deg: list[float] | None = None
     confidence: float | None = None
 
 

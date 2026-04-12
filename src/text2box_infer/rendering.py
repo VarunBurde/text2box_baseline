@@ -9,8 +9,10 @@ from PIL import Image, ImageDraw, ImageFont
 # Colors
 GT_COLOR = (22, 163, 74)
 PRED_COLOR = (220, 38, 38)
-CUBE_FRONT = (37, 99, 235)
-CUBE_BACK = (147, 197, 253)
+CUBE_FRONT = (185, 28, 28)
+CUBE_BACK = (127, 29, 29)
+CUBE_GT_FRONT = (21, 128, 61)
+CUBE_GT_BACK = (22, 101, 52)
 BG = (241, 245, 249)
 PANEL = (255, 255, 255)
 PANEL_BORDER = (203, 213, 225)
@@ -29,8 +31,12 @@ IMG_PAD = 10
 ROW_H = 18
 SUMMARY_COL_W = 440
 DET_COL_W = 336
-SUMMARY_IMG_H = 250
 DET_IMG_H = 220
+# Summary and detection columns use the same image height so all rows align.
+SUMMARY_2D_IMG_H = DET_IMG_H
+SUMMARY_3D_IMG_H = DET_IMG_H
+# 3D row reserves one text-label row above the image.
+DET_3D_ROW_H = ROW_H + DET_IMG_H
 
 
 def float_list(value: Any, expected_len: int) -> list[float] | None:
@@ -201,25 +207,23 @@ def draw_cuboid_layered(
         draw.line([points[i], points[j]], fill=front_color, width=front_w)
 
 
-def draw_instance_overlay(
+def draw_2d_overlay(
     image: Image.Image,
     gt_bbox: list[float] | None,
     pred_bbox: list[float] | None,
-    corners_norm: list[list[float]] | None,
     label: str | None = None,
 ) -> Image.Image:
+    """Draw only 2-D GT (dashed green) and predicted (solid red) bounding boxes."""
     out = image.copy()
     draw = ImageDraw.Draw(out)
-    img_w, img_h = out.size
 
     if gt_bbox is not None:
         draw_dashed_rect(draw, gt_bbox[0], gt_bbox[1], gt_bbox[2], gt_bbox[3], GT_COLOR, width=3)
 
     if pred_bbox is not None:
+        # White underlay makes the predicted box visible on bright backgrounds.
+        draw.rectangle((pred_bbox[0], pred_bbox[1], pred_bbox[2], pred_bbox[3]), outline=(255, 255, 255), width=5)
         draw.rectangle((pred_bbox[0], pred_bbox[1], pred_bbox[2], pred_bbox[3]), outline=PRED_COLOR, width=3)
-
-    if corners_norm is not None and img_w > 0 and img_h > 0:
-        draw_cuboid_layered(draw, corners_norm, img_w, img_h, front_w=3, back_w=1)
 
     if label is not None and pred_bbox is not None:
         lbl_font = load_font(12)
@@ -234,6 +238,59 @@ def draw_instance_overlay(
             outline=(40, 40, 40),
         )
         draw.text((lbl_x + 4, lbl_y + 1), label, fill=(20, 20, 20), font=lbl_font)
+
+    return out
+
+
+def _corners_in_view(corners: list[list[float]]) -> bool:
+    """Return True if at least one corner projects within [0, 1000] in both axes."""
+    return any(0.0 <= c[0] <= 1000.0 and 0.0 <= c[1] <= 1000.0 for c in corners)
+
+
+def draw_3d_gt_pred_overlay_preview(
+    image: Image.Image,
+    gt_corners_norm: list[list[float]] | None,
+    pred_corners_norm: list[list[float]] | None,
+) -> Image.Image:
+    out = image.copy()
+    draw = ImageDraw.Draw(out)
+    img_w, img_h = out.size
+    lbl_font = load_font(12)
+
+    if gt_corners_norm is not None and img_w > 0 and img_h > 0:
+        draw_cuboid_layered(
+            draw,
+            gt_corners_norm,
+            img_w,
+            img_h,
+            front_color=CUBE_GT_FRONT,
+            back_color=CUBE_GT_BACK,
+            front_w=3,
+            back_w=2,
+        )
+
+    if pred_corners_norm is not None and img_w > 0 and img_h > 0:
+        if _corners_in_view(pred_corners_norm):
+            draw_cuboid_layered(
+                draw,
+                pred_corners_norm,
+                img_w,
+                img_h,
+                front_color=CUBE_FRONT,
+                back_color=CUBE_BACK,
+                front_w=3,
+                back_w=2,
+            )
+        else:
+            # All pred corners project outside the image — likely a bad depth estimate.
+            msg = "pred: off-screen"
+            msg_w = int(draw.textlength(msg, font=lbl_font))
+            draw.text(((img_w - msg_w) // 2, img_h - 20), msg, fill=PRED_COLOR, font=lbl_font)
+
+    if gt_corners_norm is None and pred_corners_norm is None:
+        na = "n/a"
+        na_w = int(draw.textlength(na, font=lbl_font))
+        draw.text(((img_w - na_w) // 2, max(0, img_h // 2 - 6)), na, fill=MUTED, font=lbl_font)
 
     return out
 
@@ -367,7 +424,8 @@ def draw_legend_footer(
     items: list[tuple[tuple[int, int, int], str]] = [
         (GT_COLOR, "GT box"),
         (PRED_COLOR, "Pred box"),
-        (CUBE_FRONT, "3D cuboid"),
+        (CUBE_GT_FRONT, "GT 3D"),
+        (CUBE_FRONT, "Pred 3D"),
     ]
     for color, label in items:
         draw.rectangle((lx, ly + 1, lx + 12, ly + 13), fill=color, outline=(40, 40, 40))
@@ -400,7 +458,7 @@ def render_columns_report(image: Image.Image, payload: dict[str, Any]) -> Image.
     metric_font = load_font(12)
 
     # Estimate heights for each card to size a common row.
-    summary_h = 38 + SUMMARY_IMG_H + 8 + max(1, len(overview_rows)) * ROW_H + 12
+    summary_h = 38 + SUMMARY_2D_IMG_H + 8 + SUMMARY_3D_IMG_H + 8 + max(1, len(overview_rows)) * ROW_H + 12
 
     dummy = Image.new("RGB", (10, 10), color=BG)
     probe = ImageDraw.Draw(dummy)
@@ -409,7 +467,17 @@ def render_columns_report(image: Image.Image, payload: dict[str, Any]) -> Image.
         query = str(inst.get("query") or "")
         q_lines = _wrap_text_lines(probe, query, small_font, DET_COL_W - 2 * IMG_PAD - 8, max_lines=4)
         rows = _row_pairs(inst.get("rows"))
-        inst_h = 38 + DET_IMG_H + 8 + (1 + len(q_lines)) * ROW_H + 8 + max(1, len(rows)) * ROW_H + 12
+        inst_h = (
+            38
+            + DET_IMG_H
+            + 8
+            + DET_3D_ROW_H
+            + 8
+            + (1 + len(q_lines)) * ROW_H
+            + 8
+            + max(1, len(rows)) * ROW_H
+            + 12
+        )
         inst_heights.append(inst_h)
 
     body_h = max([summary_h] + inst_heights) if inst_heights else summary_h
@@ -434,28 +502,40 @@ def render_columns_report(image: Image.Image, payload: dict[str, Any]) -> Image.
 
     top_y = MARGIN + HEADER_H + GAP
 
-    # Summary card with all overlays.
+    # Summary card with separate 2D and 3D overlays.
     sx = MARGIN
     draw_card(draw, sx, top_y, SUMMARY_COL_W, body_h, fill=PANEL, outline=PANEL_BORDER, radius=10)
     draw.text((sx + IMG_PAD, top_y + 8), overview_title, fill=ACCENT, font=body_font)
 
-    all_overlay = image.copy()
+    all_2d_overlay = image.copy()
+    all_3d_overlay = image.copy()
     for idx, inst in enumerate(instances):
         gt_bbox = float_list(inst.get("gt_bbox_xyxy"), expected_len=4)
         pred_bbox = float_list(inst.get("pred_bbox_xyxy"), expected_len=4)
-        corners = corner_list(inst.get("bbox_3d_corners_norm_1000"))
-        all_overlay = draw_instance_overlay(
-            image=all_overlay,
+        pred_corners = corner_list(inst.get("pred_bbox_3d_corners_norm_1000"))
+        gt_corners = corner_list(inst.get("gt_bbox_3d_corners_norm_1000"))
+
+        all_2d_overlay = draw_2d_overlay(
+            image=all_2d_overlay,
             gt_bbox=gt_bbox,
             pred_bbox=pred_bbox,
-            corners_norm=corners,
             label=f"D{idx + 1}",
         )
+        all_3d_overlay = draw_3d_gt_pred_overlay_preview(
+            image=all_3d_overlay,
+            gt_corners_norm=gt_corners,
+            pred_corners_norm=pred_corners,
+        )
 
-    summary_img = fit_to_box(all_overlay, SUMMARY_COL_W - 2 * IMG_PAD, SUMMARY_IMG_H)
-    canvas.paste(summary_img, (sx + IMG_PAD, top_y + 30))
+    summary_2d_img = fit_to_box(all_2d_overlay, SUMMARY_COL_W - 2 * IMG_PAD, SUMMARY_2D_IMG_H)
+    summary_3d_img = fit_to_box(all_3d_overlay, SUMMARY_COL_W - 2 * IMG_PAD, SUMMARY_3D_IMG_H)
 
-    sy = top_y + 30 + SUMMARY_IMG_H + 8
+    summary_2d_y = top_y + 30
+    summary_3d_y = summary_2d_y + SUMMARY_2D_IMG_H + 8
+    canvas.paste(summary_2d_img, (sx + IMG_PAD, summary_2d_y))
+    canvas.paste(summary_3d_img, (sx + IMG_PAD, summary_3d_y))
+
+    sy = summary_3d_y + SUMMARY_3D_IMG_H + 8
     rows_to_draw = overview_rows if overview_rows else [("info", "no summary rows")]
     _draw_rows(
         draw=draw,
@@ -477,18 +557,35 @@ def render_columns_report(image: Image.Image, payload: dict[str, Any]) -> Image.
 
         gt_bbox = float_list(inst.get("gt_bbox_xyxy"), expected_len=4)
         pred_bbox = float_list(inst.get("pred_bbox_xyxy"), expected_len=4)
-        corners = corner_list(inst.get("bbox_3d_corners_norm_1000"))
-        single_overlay = draw_instance_overlay(
+        pred_corners = corner_list(inst.get("pred_bbox_3d_corners_norm_1000"))
+        gt_corners = corner_list(inst.get("gt_bbox_3d_corners_norm_1000"))
+
+        # Top row: 2D bboxes only (no cuboids).
+        det_2d_img = draw_2d_overlay(
             image=image,
             gt_bbox=gt_bbox,
             pred_bbox=pred_bbox,
-            corners_norm=corners,
             label=f"D{idx + 1}",
         )
-        det_img = fit_to_box(single_overlay, DET_COL_W - 2 * IMG_PAD, DET_IMG_H)
+        det_img = fit_to_box(det_2d_img, DET_COL_W - 2 * IMG_PAD, DET_IMG_H)
         canvas.paste(det_img, (x + IMG_PAD, top_y + 30))
 
-        text_y = top_y + 30 + DET_IMG_H + 8
+        three_d_y = top_y + 30 + DET_IMG_H + 8
+        draw.text((x + IMG_PAD, three_d_y + 2), "3D GT vs Pred", fill=MUTED, font=small_font)
+
+        mini_y = three_d_y + ROW_H
+        mini_h = DET_3D_ROW_H - ROW_H
+        mini_w = DET_COL_W - 2 * IMG_PAD
+
+        combined_3d = draw_3d_gt_pred_overlay_preview(
+            image=image,
+            gt_corners_norm=gt_corners,
+            pred_corners_norm=pred_corners,
+        )
+
+        canvas.paste(fit_to_box(combined_3d, mini_w, mini_h), (x + IMG_PAD, mini_y))
+
+        text_y = three_d_y + DET_3D_ROW_H + 8
         draw.text((x + IMG_PAD, text_y + 2), "Query:", fill=MUTED, font=small_font)
         query = str(inst.get("query") or "")
         q_lines = _wrap_text_lines(

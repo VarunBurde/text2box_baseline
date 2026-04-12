@@ -4,6 +4,7 @@ from .loaders import (
     build_object_catalog,
     build_object_lookup,
     build_object_name_lookup,
+    load_inference_tables,
     load_split_tables,
     resolve_obj_id,
 )
@@ -14,6 +15,7 @@ __all__ = [
     "build_object_catalog",
     "build_object_lookup",
     "build_object_name_lookup",
+    "load_inference_tables",
     "load_split_tables",
     "resolve_obj_id",
 ]

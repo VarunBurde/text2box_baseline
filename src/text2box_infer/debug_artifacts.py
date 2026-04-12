@@ -73,6 +73,13 @@ def _resolve_gt_bbox(record: dict[str, Any]) -> list[float] | None:
     return float_list(gt_raw.get("bbox_xyxy"), expected_len=4)
 
 
+def _resolve_gt_corners(record: dict[str, Any]) -> list[list[float]] | None:
+    gt_raw = record.get("gt")
+    if not isinstance(gt_raw, dict):
+        return None
+    return corner_list(gt_raw.get("bbox_3d_corners_norm_1000"))
+
+
 def _build_overview_rows(records: list[dict[str, Any]]) -> list[dict[str, str]]:
     n_queries = len(records)
     parsed_counts: list[int] = []
@@ -118,7 +125,14 @@ def _build_overview_rows(records: list[dict[str, Any]]) -> list[dict[str, str]]:
     ]
 
 
-def _instance_rows(record: dict[str, Any], det: dict[str, Any] | None) -> list[dict[str, str]]:
+def _pred_3d_status(pred_corners: list[list[float]] | None) -> str:
+    if pred_corners is None:
+        return "none"
+    in_view = any(0.0 <= c[0] <= 1000.0 and 0.0 <= c[1] <= 1000.0 for c in pred_corners)
+    return "visible" if in_view else "off-screen"
+
+
+def _instance_rows(record: dict[str, Any], det: dict[str, Any] | None, pred_corners: list[list[float]] | None = None) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     rows.append({"label": "query_id", "value": str(record.get("query_id", "n/a"))})
     rows.append({"label": "status", "value": str(record.get("status", "n/a"))})
@@ -136,14 +150,11 @@ def _instance_rows(record: dict[str, Any], det: dict[str, Any] | None) -> list[d
     rows.extend(
         [
             {"label": "object", "value": str(det.get("object_name") or "n/a")},
-            {"label": "obj_id", "value": str(det.get("obj_id") or "n/a")},
             {"label": "confidence", "value": format_metric(det.get("confidence"), 3)},
             {"label": "det status", "value": str(det.get("status") or "n/a")},
+            {"label": "pred 3D", "value": _pred_3d_status(pred_corners)},
             {"label": "pose", "value": str(det.get("pose_status") or "n/a")},
-            {
-                "label": "reproj err",
-                "value": format_metric(det.get("reprojection_error"), 2),
-            },
+            {"label": "reproj err", "value": format_metric(det.get("reprojection_error"), 2)},
         ]
     )
 
@@ -166,17 +177,19 @@ def build_debug_payload(
         det = _pick_detection(record)
         pred_bbox = _resolve_pred_bbox(det, width=width, height=height)
         gt_bbox = _resolve_gt_bbox(record)
-        corners = corner_list(det.get("bbox_3d_corners_norm_1000")) if det else None
+        gt_corners = _resolve_gt_corners(record)
+        pred_corners = corner_list(det.get("bbox_3d_corners_norm_1000")) if det else None
 
         instances.append(
             {
                 "title": f"Detection {idx + 1}",
                 "query": str(record.get("query") or ""),
-                "rows": _instance_rows(record, det),
+                "rows": _instance_rows(record, det, pred_corners),
                 "query_id": record.get("query_id"),
                 "gt_bbox_xyxy": gt_bbox,
                 "pred_bbox_xyxy": pred_bbox,
-                "bbox_3d_corners_norm_1000": corners,
+                "gt_bbox_3d_corners_norm_1000": gt_corners,
+                "pred_bbox_3d_corners_norm_1000": pred_corners,
                 "metrics": None,
             }
         )
