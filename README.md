@@ -16,6 +16,12 @@ The pipeline does the following:
 
 Metric definitions and interpretation guide: see `metrics.md`.
 
+## Example Debug Report
+
+Below is an example per-image debug visualization generated with `--debug`.
+
+![Handal debug report example](assets/readme/handal_debug_example.png)
+
 ## Installation
 
 ```bash
