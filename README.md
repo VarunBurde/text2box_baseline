@@ -119,15 +119,11 @@ PYTHONPATH=src .venv/bin/python -m text2box_infer \
   --debug
 ```
 
-## Prompt Profile Behavior (Current)
+## Prompt Contract (Current)
 
-Accepted values for `--prompt-profile`:
+The pipeline currently uses one unified prompt template.
 
-- `simple` (default)
-- `direct-json`
-- `normalized-pnp`
-
-All three currently map to the same unified prompt template.
+The `--prompt-profile` flag is still accepted by the CLI for backward compatibility, but it does not change behavior right now.
 
 Current prompt contract asks for:
 
