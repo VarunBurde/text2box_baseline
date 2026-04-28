@@ -6,8 +6,8 @@ This document defines every metric currently used in the Text2Box evaluation and
 
 Two layers of metrics are used:
 
-1. Protocol-level metrics from the evaluator (`final_metrics.json`): AP2D/AP3D/AR2D/AR3D/ACD3D.
-2. Report diagnostics in per-image debug JSON/PNG: per-instance IoU/ACD/hits and per-image averages.
+1. Protocol-level metrics from the evaluator (`final_metrics.json`): AP2D, AP2D@50, AP2D@75, AP3D, AP3D@25, AP3D@50, AR2D, AR3D, and ACD3D.
+2. Report diagnostics in per-image debug JSON/PDF: per-instance IoU/ACD/hits and per-image averages.
 
 ## Core Protocol Setup
 
@@ -119,7 +119,7 @@ For each query, after confidence sorting and truncating to `D_max`:
 
 ## Per-Image Report Metrics
 
-Enriched per-image report JSON/PNG computes image-level averages over instances:
+Enriched per-image report JSON/PDF computes image-level averages over instances:
 
 - `avg IoU2D`: mean of per-instance `best_iou2d`.
 - `avg IoU3D`: mean of per-instance `best_iou3d`.

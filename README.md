@@ -38,6 +38,8 @@ Commonly used:
 - `OPENAI_API_KEY` (required for `--provider openai`)
 - `OPENAI_MODEL` (default: `gpt-4.1-mini`)
 - `OPENAI_BASE_URL` (optional OpenAI-compatible endpoint)
+- `GEMINI_API_KEY` (required for `--provider gemini`)
+- `GEMINI_MODEL` (default: `gemini-robotics-er-1.6-preview`)
 - `OLLAMA_BASE_URL` (default: `http://localhost:11434/v1`)
 - `OLLAMA_MODEL` (default: `gemma4:latest`)
 - `TEMPERATURE` (default: `0.0`)
@@ -148,7 +150,7 @@ By default outputs are written under:
 - `outputs/<dataset>/<model>/<timestamp__config>/predictions/preds_<provider>_<split>.parquet`
 - `outputs/<dataset>/<model>/<timestamp__config>/predictions/preds_<provider>_<split>_manifest.summary.json`
 - `outputs/<dataset>/<model>/<timestamp__config>/debug/<image_id>.json` (with `--debug`)
-- `outputs/<dataset>/<model>/<timestamp__config>/debug/<image_id>_report.png` (with `--debug`)
+- `outputs/<dataset>/<model>/<timestamp__config>/debug/<image_id>_report.pdf` (with `--debug`)
 
 Notes:
 
