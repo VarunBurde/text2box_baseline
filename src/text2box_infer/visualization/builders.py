@@ -84,20 +84,27 @@ def build_image_overview_rows(
         return (sum(values) / len(values)) if values else None
 
     n_instances = len(instances)
-    return [
+    rows = [
         {"label": "queries", "value": str(n_instances)},
         {"label": "columns", "value": str(n_instances + 1)},
         {"label": "total detections", "value": str(total_parsed)},
         {"label": "avg confidence", "value": format_metric(_avg(confs), 3)},
-        {"label": "pose success", "value": format_percent(
-            (pose_ok / pose_known) if pose_known > 0 else None, 1)},
-        {"label": "avg reproj err", "value": format_metric(_avg(reproj_vals), 2)},
+    ]
+    
+    if any(r > 0.001 for r in reproj_vals):
+        rows.extend([
+            {"label": "pose success", "value": format_percent((pose_ok / pose_known) if pose_known > 0 else None, 1)},
+            {"label": "avg reproj err", "value": format_metric(_avg(reproj_vals), 2)},
+        ])
+        
+    rows.extend([
         {"label": "avg IoU2D", "value": format_metric(_avg(metrics["iou2d"]), 3)},
         {"label": "avg IoU3D", "value": format_metric(_avg(metrics["iou3d"]), 3)},
         {"label": "avg ACD3D", "value": format_metric(_avg(metrics["acd3d"]), 2)},
         {"label": "hit2D@50", "value": format_percent(_avg(metrics["hit2d50"]), 1)},
         {"label": "hit3D@25", "value": format_percent(_avg(metrics["hit3d25"]), 1)},
-    ]
+    ])
+    return rows
 
 
 def instance_rows(
@@ -118,9 +125,15 @@ def instance_rows(
         rows.extend([
             {"label": "object", "value": str(det.get("object_name") or "n/a")},
             {"label": "confidence", "value": format_metric(det.get("confidence"), 3)},
-            {"label": "pose", "value": str(det.get("pose_status") or "n/a")},
-            {"label": "reproj err", "value": format_metric(det.get("reprojection_error"), 2)},
         ])
+        
+        pose_status = str(det.get("pose_status") or "n/a")
+        if pose_status not in {"ok", "n/a"}:
+            rows.append({"label": "pose", "value": pose_status})
+
+        reproj = det.get("reprojection_error")
+        if reproj is not None and float(reproj) > 0.001:
+            rows.append({"label": "reproj err", "value": format_metric(reproj, 2)})
 
     if qvals is not None:
         rows.extend([

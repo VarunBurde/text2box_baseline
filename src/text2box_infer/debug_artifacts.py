@@ -167,9 +167,13 @@ def _build_overview_rows(
         {"label": "total detections", "value": str(sum(parsed_counts))},
         {"label": "avg parsed/query", "value": format_metric(avg_parsed, 2)},
         {"label": "avg confidence", "value": format_metric(avg_conf, 3)},
-        {"label": "pose success", "value": format_percent(pose_success_rate, 1)},
-        {"label": "avg reproj err", "value": format_metric(avg_reproj, 2)},
     ]
+
+    if any(r > 0.001 for r in reproj_errors):
+        rows.extend([
+            {"label": "pose success", "value": format_percent(pose_success_rate, 1)},
+            {"label": "avg reproj err", "value": format_metric(avg_reproj, 2)},
+        ])
 
     # Aggregate per-instance metrics if available.
     if instance_metrics_list:
@@ -230,19 +234,25 @@ def _instance_rows(
         rows.append({"label": "detection", "value": "not found"})
         return rows
 
-    rows.extend(
-        [
-            {"label": "object", "value": str(det.get("object_name") or "n/a")},
-            {"label": "confidence", "value": format_metric(det.get("confidence"), 3)},
-            {"label": "det status", "value": str(det.get("status") or "n/a")},
-            {"label": "pred 3D", "value": _pred_3d_status(pred_corners)},
-            {"label": "pose", "value": str(det.get("pose_status") or "n/a")},
-            {"label": "reproj err", "value": format_metric(det.get("reprojection_error"), 2)},
-        ]
-    )
+    rows.append({"label": "object", "value": str(det.get("object_name") or "n/a")})
+    rows.append({"label": "confidence", "value": format_metric(det.get("confidence"), 3)})
+    
+    det_status = str(det.get("status") or "n/a")
+    if det_status not in {"ok", "n/a"}:
+        rows.append({"label": "det status", "value": det_status})
+    rows.append({"label": "pred 3D", "value": _pred_3d_status(pred_corners)})
+
+    pose_status = str(det.get("pose_status") or "n/a")
+    if pose_status not in {"ok", "n/a"}:
+        rows.append({"label": "pose", "value": pose_status})
+
+    reproj = det.get("reprojection_error")
+    if reproj is not None and float(reproj) > 0.001:
+        rows.append({"label": "reproj err", "value": format_metric(reproj, 2)})
 
     warning = det.get("pose_warning")
-    rows.append({"label": "pose warning", "value": str(warning) if warning else "none"})
+    if warning and warning != "none":
+        rows.append({"label": "pose warning", "value": str(warning)})
 
     # Per-instance metrics (IoU2D, hits, ACD3D).
     if isinstance(metrics, dict) and metrics:

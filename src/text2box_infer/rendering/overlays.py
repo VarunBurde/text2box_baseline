@@ -89,6 +89,12 @@ def draw_cuboid_layered(
         draw.line([points[i], points[j]], fill=back_color, width=back_w)
     for i, j in front_edges:
         draw.line([points[i], points[j]], fill=front_color, width=front_w)
+        
+    # Draw small dots at the front corners to make the cuboid look better
+    r = front_w + 1
+    for i in range(4):
+        cx, cy = points[i]
+        draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=front_color)
 
 
 def draw_2d_overlay(
@@ -150,7 +156,7 @@ def draw_3d_gt_pred_overlay_preview(
         draw_cuboid_layered(
             draw, gt_corners_norm, img_w, img_h,
             front_color=CUBE_GT_FRONT, back_color=CUBE_GT_BACK,
-            front_w=3, back_w=2,
+            front_w=3, back_w=3,
         )
 
     if pred_corners_norm is not None and img_w > 0 and img_h > 0:
@@ -158,7 +164,7 @@ def draw_3d_gt_pred_overlay_preview(
             draw_cuboid_layered(
                 draw, pred_corners_norm, img_w, img_h,
                 front_color=CUBE_FRONT, back_color=CUBE_BACK,
-                front_w=3, back_w=2,
+                front_w=3, back_w=3,
             )
         else:
             msg = "pred: off-screen"

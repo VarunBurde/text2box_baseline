@@ -71,10 +71,11 @@ def _draw_detection_3d_badges(
     if pose_status == "ok" and reproj_str and reproj_str != "n/a":
         try:
             reproj_f = float(reproj_str)
-            draw_badge(
-                draw, bx, by, f"reproj {reproj_f:.1f}px",
-                bg=badge_color_reproj(reproj_f), font=badge_font,
-            )
+            if reproj_f > 0.001:
+                draw_badge(
+                    draw, bx, by, f"reproj {reproj_f:.1f}px",
+                    bg=badge_color_reproj(reproj_f), font=badge_font,
+                )
         except ValueError:
             pass
     elif pose_status == "failed":
@@ -95,7 +96,7 @@ def render_detection_cards(
     for idx, inst in enumerate(instances):
         draw_card(draw, x, top_y, DET_COL_W, body_h, fill=PANEL, outline=PANEL_BORDER, radius=10)
         title = str(inst.get("title") or f"Detection {idx + 1}")
-        draw.text((x + IMG_PAD, top_y + 8), title, fill=ACCENT, font=fonts["body"])
+        draw.text((x + IMG_PAD, top_y + 3 * SCALE), title, fill=ACCENT, font=fonts["body"])
 
         gt_bbox = float_list(inst.get("gt_bbox_xyxy"), expected_len=4)
         pred_bbox = float_list(inst.get("pred_bbox_xyxy"), expected_len=4)
@@ -115,9 +116,9 @@ def render_detection_cards(
             det_img, iou_val=iou_val,
             confidence_str=inst_row_dict.get("confidence"), badge_font=fonts["badge"],
         )
-        canvas.paste(det_img, (x + IMG_PAD, top_y + 30))
+        canvas.paste(det_img, (x + IMG_PAD, top_y + 20 * SCALE))
 
-        three_d_y = top_y + 30 + DET_IMG_H + 8
+        three_d_y = top_y + 20 * SCALE + DET_IMG_H + 3 * SCALE
         draw.text((x + IMG_PAD, three_d_y + 2), "3D GT vs Pred", fill=MUTED, font=fonts["small"])
         mini_y = three_d_y + ROW_H
         mini_h = DET_3D_ROW_H - ROW_H
@@ -132,7 +133,7 @@ def render_detection_cards(
         )
         canvas.paste(mini_img, (x + IMG_PAD, mini_y))
 
-        text_y = three_d_y + DET_3D_ROW_H + 8
+        text_y = three_d_y + DET_3D_ROW_H + 3 * SCALE
         draw.text((x + IMG_PAD, text_y + 2), "Query:", fill=MUTED, font=fonts["small"])
         q_lines = wrap_text_lines(
             draw=draw, text=str(inst.get("query") or ""),
@@ -144,7 +145,7 @@ def render_detection_cards(
             draw.text((x + IMG_PAD, text_y + 2), line, fill=TEXT, font=fonts["small"])
             text_y += ROW_H
 
-        text_y += 6
+        text_y += 2 * SCALE
         rows = row_pairs(inst.get("rows")) or [("info", "no rows")]
         draw_rows(
             draw=draw, rows=rows,

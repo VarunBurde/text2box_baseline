@@ -33,8 +33,8 @@ def _estimate_column_heights(
     small_font: ImageFont.ImageFont,
 ) -> tuple[int, list[int]]:
     summary_h = (
-        38 + SUMMARY_2D_IMG_H + 8 + SUMMARY_3D_IMG_H + 8
-        + max(1, len(overview_rows)) * ROW_H + 12
+        20 * SCALE + SUMMARY_2D_IMG_H + 3 * SCALE + SUMMARY_3D_IMG_H + 3 * SCALE
+        + max(1, len(overview_rows)) * ROW_H + 4 * SCALE
     )
     dummy = Image.new("RGB", (10, 10), color=BG)
     probe = ImageDraw.Draw(dummy)
@@ -44,9 +44,9 @@ def _estimate_column_heights(
         q_lines = wrap_text_lines(probe, query, small_font, DET_COL_W - 2 * IMG_PAD - 8, max_lines=4)
         rows = row_pairs(inst.get("rows"))
         inst_h = (
-            38 + DET_IMG_H + 8 + DET_3D_ROW_H + 8
-            + (1 + len(q_lines)) * ROW_H + 8
-            + max(1, len(rows)) * ROW_H + 12
+            20 * SCALE + DET_IMG_H + 3 * SCALE + DET_3D_ROW_H + 3 * SCALE
+            + (1 + len(q_lines)) * ROW_H + 2 * SCALE
+            + max(1, len(rows)) * ROW_H + 4 * SCALE
         )
         inst_heights.append(inst_h)
     return summary_h, inst_heights

@@ -22,6 +22,7 @@ from .primitives import (
     PANEL,
     PANEL_BORDER,
     PRED_COLOR,
+    SCALE,
     TEXT,
     draw_card,
 )
@@ -97,9 +98,27 @@ def wrap_text_lines(
         if draw.textlength(candidate, font=font) <= max_width:
             current = candidate
             continue
+            
         if current:
             lines.append(current)
-        current = word
+            if len(lines) >= max_lines:
+                break
+                
+        if draw.textlength(word, font=font) > max_width:
+            piece = ""
+            for char in word:
+                if draw.textlength(piece + char, font=font) <= max_width:
+                    piece += char
+                else:
+                    if piece:
+                        lines.append(piece)
+                        if len(lines) >= max_lines:
+                            break
+                    piece = char
+            current = piece
+        else:
+            current = word
+            
         if len(lines) >= max_lines:
             break
 
@@ -151,17 +170,17 @@ def draw_header(
         fill=HEADER_BG, outline=HEADER_BG, radius=12,
     )
     title = f"Image {int(image_id):06d}" if image_id is not None else "Image report"
-    draw.text((MARGIN + 16, MARGIN + 14), title, fill=HEADER_TEXT, font=title_font)
+    draw.text((MARGIN + 5 * SCALE, MARGIN + 4 * SCALE), title, fill=HEADER_TEXT, font=title_font)
     chip = f"  {model_name}  "
-    chip_w = int(draw.textlength(chip, font=body_font)) + 6
-    chip_h = 28
-    chip_x = canvas_w - MARGIN - chip_w - 12
+    chip_w = int(draw.textlength(chip, font=body_font)) + 2 * SCALE
+    chip_h = 10 * SCALE
+    chip_x = canvas_w - MARGIN - chip_w - 4 * SCALE
     chip_y = MARGIN + (HEADER_H - chip_h) // 2
     draw.rounded_rectangle(
         (chip_x, chip_y, chip_x + chip_w, chip_y + chip_h),
-        radius=10, fill=ACCENT, outline=(147, 197, 253),
+        radius=3 * SCALE, fill=ACCENT, outline=(147, 197, 253),
     )
-    draw.text((chip_x + 4, chip_y + 6), chip, fill=HEADER_TEXT, font=body_font)
+    draw.text((chip_x + 1 * SCALE, chip_y + 2 * SCALE), chip, fill=HEADER_TEXT, font=body_font)
 
 
 def draw_legend_footer(
@@ -171,10 +190,10 @@ def draw_legend_footer(
     font: ImageFont.ImageFont,
 ) -> None:
     draw_card(draw, MARGIN, y, canvas_w - 2 * MARGIN, FOOTER_H, fill=PANEL, outline=PANEL_BORDER, radius=8)
-    lx = MARGIN + 12
-    ly = y + 12
+    lx = MARGIN + 4 * SCALE
+    ly = y + 4 * SCALE
     draw.text((lx, ly), "Legend:", fill=TEXT, font=font)
-    lx += int(draw.textlength("Legend:", font=font)) + 12
+    lx += int(draw.textlength("Legend:", font=font)) + 4 * SCALE
 
     items: list[tuple[tuple[int, int, int], str]] = [
         (GT_COLOR, "GT box"),
@@ -183,7 +202,7 @@ def draw_legend_footer(
         (CUBE_FRONT, "Pred 3D"),
     ]
     for color, label in items:
-        draw.rectangle((lx, ly + 1, lx + 12, ly + 13), fill=color, outline=(40, 40, 40))
-        lx += 16
+        draw.rectangle((lx, ly, lx + 4 * SCALE, ly + 4 * SCALE), fill=color, outline=(40, 40, 40))
+        lx += 5 * SCALE
         draw.text((lx, ly), label, fill=TEXT, font=font)
-        lx += int(draw.textlength(label, font=font)) + 14
+        lx += int(draw.textlength(label, font=font)) + 5 * SCALE

@@ -21,6 +21,7 @@ from .primitives import (
     PANEL,
     PANEL_BORDER,
     ROW_H,
+    SCALE,
     SUMMARY_2D_IMG_H,
     SUMMARY_3D_IMG_H,
     SUMMARY_COL_W,
@@ -126,7 +127,7 @@ def render_summary_card(
     fonts: dict[str, ImageFont.ImageFont],
 ) -> None:
     draw_card(draw, sx, top_y, SUMMARY_COL_W, body_h, fill=PANEL, outline=PANEL_BORDER, radius=10)
-    draw.text((sx + IMG_PAD, top_y + 8), overview_title, fill=ACCENT, font=fonts["body"])
+    draw.text((sx + IMG_PAD, top_y + 3 * SCALE), overview_title, fill=ACCENT, font=fonts["body"])
 
     all_2d = image.copy()
     all_3d = image.copy()
@@ -150,12 +151,12 @@ def render_summary_card(
         avg_reproj=stats["avg_reproj"], badge_font=fonts["badge"],
     )
 
-    summary_2d_y = top_y + 30
-    summary_3d_y = summary_2d_y + SUMMARY_2D_IMG_H + 8
+    summary_2d_y = top_y + 20 * SCALE
+    summary_3d_y = summary_2d_y + SUMMARY_2D_IMG_H + 3 * SCALE
     canvas.paste(summary_2d, (sx + IMG_PAD, summary_2d_y))
     canvas.paste(summary_3d, (sx + IMG_PAD, summary_3d_y))
 
-    rows_y = summary_3d_y + SUMMARY_3D_IMG_H + 8
+    rows_y = summary_3d_y + SUMMARY_3D_IMG_H + 3 * SCALE
     rows_to_draw = overview_rows if overview_rows else [("info", "no summary rows")]
     draw_rows(
         draw=draw, rows=rows_to_draw,
