@@ -10,12 +10,6 @@ class RunMode(str, Enum):
     VISUALIZE     = "visualize"
 
 
-class PromptProfile(str, Enum):
-    SIMPLE = "simple"
-    NORMALIZED_PNP = "normalized-pnp"  # Backward-compatible alias mapped to unified prompt.
-    DIRECT_JSON = "direct-json"  # Backward-compatible alias mapped to unified prompt.
-
-
 @dataclass(slots=True)
 class ModelRequest:
     query: str
@@ -23,7 +17,6 @@ class ModelRequest:
     height: int
     intrinsics: list[float]
     mode: RunMode
-    prompt_profile: PromptProfile = PromptProfile.SIMPLE
 
 
 @dataclass(slots=True)

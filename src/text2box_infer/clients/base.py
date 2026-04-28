@@ -16,15 +16,20 @@ class VisionProvider(ABC):
     def predict(self, image_bytes: bytes, request: ModelRequest) -> str:
         """Run model inference and return text output."""
 
+
 def create_provider(provider: str, settings: Settings) -> VisionProvider:
     provider_norm = provider.lower()
 
     if provider_norm == "openai":
-        from .openai_client import OpenAIProvider
-        return OpenAIProvider(settings)
+        from .openai import make_openai_provider
+        return make_openai_provider(settings)
 
     if provider_norm == "ollama":
-        from .openai_client import OllamaProvider
-        return OllamaProvider(settings)
+        from .openai import make_ollama_provider
+        return make_ollama_provider(settings)
 
-    raise ValueError(f"Unsupported provider: {provider!r}. Choose 'openai' or 'ollama'.")
+    if provider_norm == "gemini":
+        from .gemini import make_gemini_provider
+        return make_gemini_provider(settings)
+
+    raise ValueError(f"Unsupported provider: {provider!r}. Choose 'openai', 'ollama', or 'gemini'.")

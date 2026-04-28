@@ -102,6 +102,17 @@ PYTHONPATH=src .venv/bin/python -m text2box_infer \
   --debug
 ```
 
+Gemini provider example:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m text2box_infer \
+  --data-root Datasets/ycbv \
+  --split test \
+  --mode baseline-2d3d \
+  --provider gemini \
+  --debug
+```
+
 Quick sanity-run options:
 
 - `--limit N`: limit by number of queries.
@@ -121,11 +132,7 @@ PYTHONPATH=src .venv/bin/python -m text2box_infer \
 
 ## Prompt Contract (Current)
 
-The pipeline currently uses one unified prompt template.
-
-The `--prompt-profile` flag is still accepted by the CLI for backward compatibility, but it does not change behavior right now.
-
-Current prompt contract asks for:
+The pipeline uses one unified prompt template. Current prompt contract asks for:
 
 - `bbox_2d_norm_1000`
 - `box_3d` = `[x_center_mm, y_center_mm, z_center_mm, x_size_mm, y_size_mm, z_size_mm, roll_deg, pitch_deg, yaw_deg]`

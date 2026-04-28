@@ -3,41 +3,16 @@ from __future__ import annotations
 
 import io
 import json
-import math
 from pathlib import Path
 from typing import Any, cast
 
-from PIL import Image
+import numpy as np
+from PIL import Image, UnidentifiedImageError
 
-from .rendering import (
-    corner_list,
-    denorm_bbox_yxyx_to_xyxy,
-    float_list,
-    format_metric,
-    format_percent,
-    render_columns_report,
-)
-
-SCHEMA_VERSION = "debug-columns-v1"
-
-
-# ---------------------------------------------------------------------------
-# Metric computation helpers
-# ---------------------------------------------------------------------------
-
-def _compute_iou_2d(gt: list[float], pred: list[float]) -> float | None:
-    """Axis-aligned IoU from two xyxy boxes."""
-    ix0 = max(gt[0], pred[0])
-    iy0 = max(gt[1], pred[1])
-    ix1 = min(gt[2], pred[2])
-    iy1 = min(gt[3], pred[3])
-    inter = max(0.0, ix1 - ix0) * max(0.0, iy1 - iy0)
-    if inter == 0.0:
-        return 0.0
-    gt_area = max(0.0, gt[2] - gt[0]) * max(0.0, gt[3] - gt[1])
-    pred_area = max(0.0, pred[2] - pred[0]) * max(0.0, pred[3] - pred[1])
-    union = gt_area + pred_area - inter
-    return inter / union if union > 0 else None
+from .evaluation.iou import corner_distance_mean, iou_xyxy
+from .geometry import denormalize_bbox_yxyx_to_xyxy
+from .rendering import corner_list, float_list, format_metric, format_percent, render_columns_report
+from .utils import SCHEMA_VERSION, pick_best_detection, safe_float
 
 
 def _compute_acd_3d(
@@ -51,13 +26,13 @@ def _compute_acd_3d(
     if len(pred_corners) != 8 or len(gt_corners) != 8:
         return None
     try:
-        total = sum(
-            math.sqrt(sum((p - g) ** 2 for p, g in zip(pc, gc)))
-            for pc, gc in zip(pred_corners, gt_corners)
-        )
-        return total / 8.0
-    except Exception:  # noqa: BLE001
+        a = np.asarray(pred_corners, dtype=np.float64)
+        b = np.asarray(gt_corners, dtype=np.float64)
+    except (TypeError, ValueError):
         return None
+    if a.shape != (8, 3) or b.shape != (8, 3):
+        return None
+    return corner_distance_mean(a, b)
 
 
 def _parse_corners_cam(raw: Any) -> list[list[float]] | None:
@@ -92,11 +67,10 @@ def _build_instance_metrics(
     pred_bbox = float_list(pred_bbox_raw, expected_len=4) if isinstance(pred_bbox_raw, list) else None
 
     if gt_bbox is not None and pred_bbox is not None:
-        iou2d = _compute_iou_2d(gt_bbox, pred_bbox)
-        if iou2d is not None:
-            metrics["iou2d"] = round(iou2d, 4)
-            metrics["hit2d@50"] = int(iou2d >= 0.50)
-            metrics["hit2d@75"] = int(iou2d >= 0.75)
+        iou2d = iou_xyxy(gt_bbox, pred_bbox)
+        metrics["iou2d"] = round(iou2d, 4)
+        metrics["hit2d@50"] = int(iou2d >= 0.50)
+        metrics["hit2d@75"] = int(iou2d >= 0.75)
 
     # ---- ACD3D ----
     gt_corners_cam = _parse_corners_cam(gt_raw.get("bbox_3d_corners_cam_xyz_mm"))
@@ -113,34 +87,11 @@ def _build_instance_metrics(
 # ---------------------------------------------------------------------------
 
 
-def _safe_float(value: Any) -> float | None:
-    try:
-        if value is None:
-            return None
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
 def _detection_list(record: dict[str, Any]) -> list[dict[str, Any]]:
     raw = record.get("detections")
     if not isinstance(raw, list):
         return []
     return [det for det in cast(list[Any], raw) if isinstance(det, dict)]
-
-
-def _pick_detection(record: dict[str, Any]) -> dict[str, Any] | None:
-    candidates = _detection_list(record)
-    if not candidates:
-        return None
-
-    def _score(det: dict[str, Any]) -> tuple[int, float]:
-        status = 1 if det.get("status") == "ok" else 0
-        conf = _safe_float(det.get("confidence"))
-        return status, conf if conf is not None else -1.0
-
-    candidates_sorted = sorted(candidates, key=_score, reverse=True)
-    return candidates_sorted[0] if candidates_sorted else None
 
 
 def _resolve_pred_bbox(
@@ -156,7 +107,7 @@ def _resolve_pred_bbox(
     norm = float_list(det.get("bbox_2d_norm_1000"), expected_len=4)
     if norm is None or width <= 0 or height <= 0:
         return None
-    return denorm_bbox_yxyx_to_xyxy(norm, width=width, height=height)
+    return denormalize_bbox_yxyx_to_xyxy(norm, width=width, height=height)
 
 
 def _resolve_gt_bbox(record: dict[str, Any]) -> list[float] | None:
@@ -187,15 +138,15 @@ def _build_overview_rows(
     for record in records:
         dets = _detection_list(record)
         parsed_counts.append(len(dets))
-        det = _pick_detection(record)
+        det = pick_best_detection(record)
         if det is None:
             continue
 
-        conf = _safe_float(det.get("confidence"))
+        conf = safe_float(det.get("confidence"))
         if conf is not None:
             confidences.append(conf)
 
-        reproj = _safe_float(det.get("reprojection_error"))
+        reproj = safe_float(det.get("reprojection_error"))
         if reproj is not None:
             reproj_errors.append(reproj)
 
@@ -319,7 +270,7 @@ def build_debug_payload(
     instances: list[dict[str, Any]] = []
     instance_metrics_list: list[dict[str, Any] | None] = []
     for idx, record in enumerate(image_records):
-        det = _pick_detection(record)
+        det = pick_best_detection(record)
         pred_bbox = _resolve_pred_bbox(det, width=width, height=height)
         gt_bbox = _resolve_gt_bbox(record)
         gt_corners = _resolve_gt_corners(record)
@@ -372,7 +323,7 @@ def flush_image_debug_artifacts(
         try:
             base_rgb = Image.open(io.BytesIO(image_bytes)).convert("RGB")
             image_size = base_rgb.size
-        except Exception:
+        except (UnidentifiedImageError, OSError, ValueError):
             base_rgb = None
             image_size = None
 
@@ -387,6 +338,6 @@ def flush_image_debug_artifacts(
     out_json.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     if base_rgb is not None:
-        out_png = debug_dir / f"{int(image_id):06d}_report.png"
+        out_pdf = debug_dir / f"{int(image_id):06d}_report.pdf"
         report = render_columns_report(image=base_rgb, payload=payload)
-        report.save(out_png)
+        report.save(out_pdf, format="PDF", resolution=200.0)

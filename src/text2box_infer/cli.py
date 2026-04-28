@@ -2,25 +2,13 @@ from __future__ import annotations
 
 import argparse
 import logging
-import re
 from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import Settings
 from .pipeline import run_inference
-from .types import PromptProfile, RunMode
-
-
-def _slugify(text: str) -> str:
-    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", str(text).strip())
-    cleaned = re.sub(r"-+", "-", cleaned).strip("-._")
-    return cleaned or "unknown"
-
-
-def _format_config_value(value: float | int) -> str:
-    if isinstance(value, float):
-        return _slugify(f"{value:.4g}".replace(".", "p"))
-    return _slugify(str(value))
+from .types import RunMode
+from .utils import format_config, slugify
 
 
 def _default_run_paths(
@@ -29,19 +17,21 @@ def _default_run_paths(
     split: str,
     settings: Settings,
 ) -> tuple[Path, Path]:
-    dataset_slug = _slugify(data_root.name.lower())
+    dataset_slug = slugify(data_root.name.lower())
     if provider_slug == "ollama":
         model_name = settings.ollama_model
+    elif provider_slug == "gemini":
+        model_name = settings.gemini_model
     else:
         model_name = settings.openai_model
-    model_slug = _slugify(model_name)
+    model_slug = slugify(model_name)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     config_tokens = [
-        f"temp{_format_config_value(settings.temperature)}",
-        f"maxTok{_format_config_value(settings.max_output_tokens)}",
+        f"temp{format_config(settings.temperature)}",
+        f"maxTok{format_config(settings.max_output_tokens)}",
     ]
-    run_slug = f"{timestamp}__{'_'.join(config_tokens)}"
+    run_slug = f"{timestamp}____{'_'.join(config_tokens)}"
     run_dir = Path("outputs") / dataset_slug / model_slug / run_slug
     predictions_dir = run_dir / "predictions"
 
@@ -70,27 +60,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional limit on number of unique images to process",
     )
     parser.add_argument("--manifest-jsonl", type=Path, default=None)
-    parser.add_argument("--provider", default="openai", choices=["openai", "ollama"])
+    parser.add_argument("--provider", default="openai", choices=["openai", "ollama", "gemini"])
     parser.add_argument("--env-file", type=Path, default=None)
     parser.add_argument("--log-level", default="INFO")
     parser.add_argument(
         "--debug",
         action="store_true",
         help="Enable per-image debug JSON and PNG report generation during inference.",
-    )
-    parser.add_argument(
-        "--prompt-profile",
-        choices=[
-            PromptProfile.SIMPLE.value,
-            PromptProfile.DIRECT_JSON.value,
-            PromptProfile.NORMALIZED_PNP.value,
-        ],
-        default=PromptProfile.SIMPLE.value,
-        help=(
-            "Prompt profile to use. simple is the canonical name. direct-json and "
-            "normalized-pnp are backward-compatible aliases that map to the same prompt. "
-            "Default: simple."
-        ),
     )
 
     # ── Visualize-mode arguments (ignored for inference modes) ────────
@@ -183,7 +159,6 @@ def main() -> None:
     # ── Inference modes ───────────────────────────────────────────────
     settings = Settings.from_env(args.env_file)
     provider_slug = str(args.provider).strip().lower()
-    prompt_profile = PromptProfile(args.prompt_profile)
 
     output_parquet = args.output_parquet
     manifest_jsonl = args.manifest_jsonl
@@ -210,7 +185,6 @@ def main() -> None:
         limit=args.limit,
         limit_images=args.limit_images,
         debug=bool(args.debug),
-        prompt_profile=prompt_profile,
     )
 
     print("Inference finished.")

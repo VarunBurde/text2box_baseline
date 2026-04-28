@@ -1,8 +1,10 @@
+"""OpenAI-compatible vision provider (covers both OpenAI and local Ollama)."""
 from __future__ import annotations
 
 import base64
 import io
 import time
+from typing import Literal
 
 from PIL import Image
 
@@ -11,12 +13,14 @@ from ..prompts import build_prompt
 from ..types import ModelRequest
 from .base import VisionProvider
 
+SYSTEM_PROMPT = "You are a spatial grounding model. Follow schema exactly."
 
-def image_to_data_url(image: Image.Image, fmt: str = "PNG") -> str:
+
+def image_to_data_url(image: Image.Image, fmt: Literal["PNG", "JPEG"] = "PNG") -> str:
     buf = io.BytesIO()
     image.save(buf, format=fmt)
     b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-    mime = "image/png" if fmt.upper() == "PNG" else "image/jpeg"
+    mime = "image/png" if fmt == "PNG" else "image/jpeg"
     return f"data:{mime};base64,{b64}"
 
 
@@ -47,10 +51,7 @@ def call_vlm(
                     {
                         "role": "user",
                         "content": [
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": image_url, "detail": "high"},
-                            },
+                            {"type": "image_url", "image_url": {"url": image_url, "detail": "high"}},
                             {"type": "text", "text": user_prompt},
                         ],
                     },
@@ -62,16 +63,12 @@ def call_vlm(
                 kwargs["response_format"] = {"type": "json_object"}
 
             resp = client.chat.completions.create(**kwargs)
-            content = resp.choices[0].message.content
-            return (content or "").strip()
+            return (resp.choices[0].message.content or "").strip()
         except Exception as exc:  # noqa: BLE001
             message = str(exc).lower()
             if use_json_response_format and (
-                "response_format" in message
-                or "json_object" in message
-                or "unsupported" in message
+                "response_format" in message or "json_object" in message or "unsupported" in message
             ):
-                # Some OpenAI-compatible servers may not support response_format.
                 use_json_response_format = False
                 if attempt < max_retries - 1:
                     print("    response_format not supported; retrying without it")
@@ -85,65 +82,53 @@ def call_vlm(
                 print(f"    VLM error after {max_retries} attempts: {exc}")
                 return ""
 
+    return ""
 
-class OllamaProvider(VisionProvider):
-    name = "ollama"
 
-    def __init__(self, settings: Settings):
+class OpenAICompatibleProvider(VisionProvider):
+    """Single provider for any OpenAI-compatible chat-completions endpoint."""
+
+    def __init__(self, settings: Settings, *, name: str, api_key: str, base_url: str, model_name: str) -> None:
         super().__init__(settings)
-        self._client = create_vlm_client(
-            api_key="ollama",
-            base_url=self.settings.ollama_base_url,
-        )
-
-    def predict(self, image_bytes: bytes, request: ModelRequest) -> str:
-        user_prompt = build_prompt(request)
-        system_prompt = "You are a spatial grounding model. Follow schema exactly."
-
-        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        image_url = image_to_data_url(image)
-
-        return call_vlm(
-            client=self._client,
-            model_name=self.settings.ollama_model,
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            image_url=image_url,
-            max_retries=self.settings.max_retries,
-            temperature=self.settings.temperature,
-            max_tokens=self.settings.max_output_tokens,
-        )
-
-
-class OpenAIProvider(VisionProvider):
-    name = "openai"
-
-    def __init__(self, settings: Settings):
-        super().__init__(settings)
-        api_key = self.settings.require_key(self.name)
-
+        self.name = name
+        self._model_name = model_name
         try:
-            self._client = create_vlm_client(
-                api_key=api_key,
-                base_url=self.settings.openai_base_url,
-            )
+            self._client = create_vlm_client(api_key=api_key, base_url=base_url)
         except ImportError as exc:
             raise ImportError("openai package is required. Install requirements.txt.") from exc
 
     def predict(self, image_bytes: bytes, request: ModelRequest) -> str:
         user_prompt = build_prompt(request)
-        system_prompt = "You are a spatial grounding model. Follow schema exactly."
-
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         image_url = image_to_data_url(image)
-
         return call_vlm(
             client=self._client,
-            model_name=self.settings.openai_model,
-            system_prompt=system_prompt,
+            model_name=self._model_name,
+            system_prompt=SYSTEM_PROMPT,
             user_prompt=user_prompt,
             image_url=image_url,
             max_retries=self.settings.max_retries,
             temperature=self.settings.temperature,
             max_tokens=self.settings.max_output_tokens,
         )
+
+
+def make_openai_provider(settings: Settings) -> OpenAICompatibleProvider:
+    api_key = settings.require_key("openai")
+    return OpenAICompatibleProvider(
+        settings,
+        name="openai",
+        api_key=api_key,
+        base_url=settings.openai_base_url,
+        model_name=settings.openai_model,
+    )
+
+
+def make_ollama_provider(settings: Settings) -> OpenAICompatibleProvider:
+    return OpenAICompatibleProvider(
+        settings,
+        name="ollama",
+        api_key="ollama",
+        base_url=settings.ollama_base_url,
+        model_name=settings.ollama_model,
+    )

@@ -37,7 +37,6 @@ def write_gts_like_parquet(rows: list[dict[str, Any]], output_path: str | Path) 
 def write_manifest_jsonl(records: list[dict[str, Any]], manifest_path: str | Path) -> None:
     manifest_path = Path(manifest_path)
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
-
     with manifest_path.open("w", encoding="utf-8") as handle:
         for record in records:
             handle.write(json.dumps(record, ensure_ascii=True) + "\n")
@@ -50,7 +49,39 @@ def init_manifest_jsonl(manifest_path: str | Path) -> None:
 
 
 def append_manifest_record(record: dict[str, Any], manifest_path: str | Path) -> None:
+    """Single-shot append. Prefer ManifestWriter for hot paths to avoid open/close churn."""
     manifest_path = Path(manifest_path)
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     with manifest_path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, ensure_ascii=True) + "\n")
+
+
+class ManifestWriter:
+    """Append-only JSONL writer that keeps a single file handle open for the run.
+
+    Use as a context manager, or call close() explicitly. Records are flushed to disk
+    on every append so partial runs leave a readable manifest.
+    """
+
+    def __init__(self, manifest_path: str | Path) -> None:
+        self._path = Path(manifest_path)
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._handle = self._path.open("a", encoding="utf-8")
+
+    def append(self, record: dict[str, Any]) -> None:
+        self._handle.write(json.dumps(record, ensure_ascii=True) + "\n")
+        self._handle.flush()
+
+    def close(self) -> None:
+        if not self._handle.closed:
+            self._handle.close()
+
+    def __enter__(self) -> "ManifestWriter":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
+
+    @property
+    def path(self) -> Path:
+        return self._path

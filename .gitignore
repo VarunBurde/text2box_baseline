@@ -1,5 +1,7 @@
 # Generated run artifacts
 outputs/
+unstructed_dataset/
+graphify-out/
 
 # Python cache artifacts
 __pycache__/

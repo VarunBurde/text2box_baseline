@@ -12,7 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from text2box_infer.evaluation.metrics import (
+from text2box_infer.evaluation import (
     compute_protocol_metrics,
     compute_protocol_metrics_from_manifest,
     infer_run_dir_from_manifest,

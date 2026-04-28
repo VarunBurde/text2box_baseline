@@ -12,6 +12,8 @@ class Settings:
     openai_api_key: str | None
     openai_model: str
     openai_base_url: str | None
+    gemini_api_key: str | None
+    gemini_model: str
     nvidia_base_url: str
     ollama_base_url: str
     ollama_model: str
@@ -33,6 +35,8 @@ class Settings:
             openai_api_key=_strip_empty(os.getenv("OPENAI_API_KEY")),
             openai_model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
             openai_base_url=_strip_empty(os.getenv("OPENAI_BASE_URL")),
+            gemini_api_key=_strip_empty(os.getenv("GEMINI_API_KEY")),
+            gemini_model=os.getenv("GEMINI_MODEL", "gemini-robotics-er-1.6-preview"),
             nvidia_base_url=os.getenv(
                 "NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1"
             ),
@@ -52,6 +56,10 @@ class Settings:
             if not self.openai_api_key:
                 raise ValueError("OPENAI_API_KEY is missing.")
             return self.openai_api_key
+        if provider_norm == "gemini":
+            if not self.gemini_api_key:
+                raise ValueError("GEMINI_API_KEY is missing.")
+            return self.gemini_api_key
         if provider_norm == "ollama":
             return "ollama"
         raise ValueError(f"Unsupported provider: {provider}")
